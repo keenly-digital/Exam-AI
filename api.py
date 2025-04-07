@@ -7,6 +7,7 @@ import tempfile
 from pdf_content_extraction import parse_pdf_and_extract_images
 from parse_pdf_into_json import TopicProcessor, process_content
 import re
+import uvicorn
 
 app = FastAPI()
 
@@ -74,6 +75,16 @@ async def process_pdf(file: UploadFile = File(...)):
             content={"error": f"An unexpected error occurred: {str(e)}"}
         )
 
+# Remove the `if __name__ == "__main__":` block and replace with:
+def start():
+    """Run the FastAPI app using Uvicorn programmatically."""
+    port = int(os.getenv("PORT", 8000))  # Default to 8000 if PORT not set
+    uvicorn.run(
+        "main:app",  # Replace "main" with your filename if different
+        host="0.0.0.0",
+        port=port,
+        reload=False  # Disable auto-reload in production
+    )
+
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    start()
