@@ -80,7 +80,7 @@ def start():
     """Run the FastAPI app using Uvicorn programmatically."""
     port = int(os.getenv("PORT", 8000))  # Default to 8000 if PORT not set
     uvicorn.run(
-        "main:app",  # Replace "main" with your filename if different
+        "api:app",  # Replace "main" with your filename if different
         host="0.0.0.0",
         port=port,
         reload=False  # Disable auto-reload in production
