@@ -22,7 +22,7 @@ def clean_lines(lines: List[str]) -> List[str]:
         if line.endswith(".COM") or "CERT MAGE" in line:
             match_idx = i
             to_remove.add(match_idx)
-
+            # breakpoint()
             prev = lines[i - 1] if i - 1 >= 0 else ""
             next_ = lines[i + 1] if i + 1 < n else ""
             next2 = lines[i + 2] if i + 2 < n else ""
@@ -38,8 +38,35 @@ def clean_lines(lines: List[str]) -> List[str]:
                 to_remove.update(range(max(0, i - 2), i))
             elif "Exam Dumps" in next_:
                 to_remove.update(range(i + 1, min(n, i + 3)))
+            
 
     return [line for idx, line in enumerate(lines) if idx not in to_remove]
+
+def remove_qna_pdf_lines(lines: List[str]) -> List[str]:
+    """
+    Removes lines containing 'Questions and Answers PDF' and the next line.
+    
+    Args:
+        lines: List of strings (text lines from a document)
+    
+    Returns:
+        Filtered list with the target line and the next line removed
+    """
+    filtered_lines = []
+    skip_next = False
+    
+    for line in lines:
+        if skip_next:
+            skip_next = False
+            continue
+        
+        if 'Questions and Answers PDF' in line:
+            skip_next = True
+            continue
+        
+        filtered_lines.append(line)
+    
+    return filtered_lines
 
 def ensure_directory_exists(directory: str) -> None:
     """Create directory if it doesn't exist."""
@@ -137,6 +164,7 @@ def parse_pdf_and_extract_images(
 
     # Apply post-filtering rules
     cleaned_lines = clean_lines(lines_with_placeholders)
+    cleaned_lines = remove_qna_pdf_lines(cleaned_lines)
 
     # Write to file if path is provided
     if output_txt_path:
@@ -147,11 +175,11 @@ def parse_pdf_and_extract_images(
     return output_txt_path, cleaned_lines, extracted_images
 
 if __name__ == "__main__":
-    pdf_file = "1Z0-830-Full-File.pdf"
+    pdf_file = "/Users/dev/Documents/pdf_parser_final/docs/CCSP-EXAM DUMPS.pdf"
     output_path, lines, images = parse_pdf_and_extract_images(
         pdf_file,
         output_img_dir="static/images",
-        output_txt_path="cleaned_text_830.txt"
+        output_txt_path="cleaned_text_CISSP.txt"
     )
     print(f"Processed {len(images)} images")
     print(f"Text saved to: {output_path}")
