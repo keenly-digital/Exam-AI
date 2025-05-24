@@ -9,4 +9,4 @@ RUN pip install --upgrade pip \
 
 EXPOSE 8000
 
-CMD ["python", "api.py"]
+CMD ["python", "main.py"]
