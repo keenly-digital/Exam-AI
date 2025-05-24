@@ -174,12 +174,12 @@ def parse_pdf_and_extract_images(
 
     return output_txt_path, cleaned_lines, extracted_images
 
-if __name__ == "__main__":
-    pdf_file = "/Users/dev/Documents/pdf_parser_final/docs/CCSP-EXAM DUMPS.pdf"
-    output_path, lines, images = parse_pdf_and_extract_images(
-        pdf_file,
-        output_img_dir="static/images",
-        output_txt_path="cleaned_text_CISSP.txt"
-    )
-    print(f"Processed {len(images)} images")
-    print(f"Text saved to: {output_path}")
+# if __name__ == "__main__":
+#     pdf_file = "docs/MB-820 Dumps.pdf"
+#     output_path, lines, images = parse_pdf_and_extract_images(
+#         pdf_file,
+#         output_img_dir="static/images",
+#         output_txt_path="cleaned_text_CISSP.txt"
+#     )
+#     print(f"Processed {len(images)} images")
+#     print(f"Text saved to: {output_path}")

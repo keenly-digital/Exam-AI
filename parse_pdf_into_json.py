@@ -7,9 +7,9 @@ from typing import Dict, List, Union, Pattern, Match, Optional, Tuple
 class TopicProcessor:
     def __init__(self):
         # Initialize regex patterns
-        self.topic_pattern = re.compile(r"Topic (\d+), (.+?)\n(.+?)(?=(Topic \d+, |Case Study: \d+|$))", re.DOTALL)
-        self.case_study_pattern = re.compile(r"Case Study: (\d+)\n(.+?)\n(.+?)(?=(Topic \d+, |Case Study: \d+|$))", re.DOTALL)
-        self.question_pattern = re.compile(r"Question: (\d+)\n(.+?)(?=(Question: \d+|Topic \d+, |Case Study: \d+|$))", re.DOTALL)
+        self.topic_pattern = re.compile(r"Topic (\d+)\s*,\s*(.+?)\n(.+?)(?=(Topic \d+\s*,|Case Study: \d+|$))", re.DOTALL)
+        self.case_study_pattern = re.compile(r"Case Study: (\d+)\n(.+?)\n(.+?)(?=(Topic \d+\s*,|Case Study: \d+|$))", re.DOTALL)
+        self.question_pattern = re.compile(r"Question:\s*(\d+)\n(.+?)(?=(Question:\s*\d+|Topic \d+, |Case Study: \d+|$))", re.DOTALL)
         self.answer_pattern = re.compile(r"Answer:\s*([A-G,\s]+)(?=\n|$)")
         self.explanation_pattern = re.compile(r"Explanation:\s*(.+?)(?=(?:Question: \d+|Topic \d+, |Case Study: \d+|$))", re.DOTALL)
 
@@ -73,14 +73,16 @@ class TopicProcessor:
 
     def extract_case_study_text(self, text: str) -> str:
         """Extract case study text from content."""
+
         case_study_match = re.search(
-            r"(?s)(Topic \d+, |Case Study: \d+\n).+?\n(.+?)(?=Question: \d+)",
+            r"(?s)(Topic \d+\s*, |Case Study: \d+\n).+?\n(.+?)(?=Question: \d+)",
             text,
             re.DOTALL
         )
         if case_study_match:
             case_study_text = case_study_match.group(2).strip()
             case_study_text = re.sub(r'Question: \d+.*', '', case_study_text, flags=re.DOTALL)
+
             return case_study_text if case_study_text and not case_study_text.isspace() else ""
         return ""
 
