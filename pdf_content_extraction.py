@@ -175,7 +175,7 @@ def parse_pdf_and_extract_images(
     return output_txt_path, cleaned_lines, extracted_images
 
 # if __name__ == "__main__":
-#     pdf_file = "docs/MB-820 Dumps.pdf"
+#     pdf_file = "/Users/dev/Documents/pdf_parser_final/docs/Cert-Empire-CISSP-Exam-Demo-PDF.pdf"
 #     output_path, lines, images = parse_pdf_and_extract_images(
 #         pdf_file,
 #         output_img_dir="static/images",

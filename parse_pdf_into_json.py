@@ -9,39 +9,117 @@ class TopicProcessor:
         # Initialize regex patterns
         self.topic_pattern = re.compile(r"Topic (\d+)\s*,\s*(.+?)\n(.+?)(?=(Topic \d+\s*,|Case Study: \d+|$))", re.DOTALL)
         self.case_study_pattern = re.compile(r"Case Study: (\d+)\n(.+?)\n(.+?)(?=(Topic \d+\s*,|Case Study: \d+|$))", re.DOTALL)
-        self.question_pattern = re.compile(r"Question:\s*(\d+)\n(.+?)(?=(Question:\s*\d+|Topic \d+, |Case Study: \d+|$))", re.DOTALL)
-        self.answer_pattern = re.compile(r"Answer:\s*([A-G,\s]+)(?=\n|$)")
+        # self.question_pattern = re.compile(r"Question:\s*(\d+)\n(.+?)(?=(Question:\s*\d+|Topic \d+, |Case Study: \d+|$))", re.DOTALL)
+        self.question_pattern = re.compile(
+            r"(?:QUESTION|Question)[:\s]*(\d+)\n(.+?)(?=(?:QUESTION|Question)[:\s]*\d+|Topic \d+, |Case Study: \d+|$)", 
+            re.DOTALL | re.IGNORECASE
+        )
+        # self.answer_pattern = re.compile(r"Answer:\s*([A-G,\s]+)(?=\n|$)")
+        self.answer_pattern = re.compile(
+            r"(?:Correct Answer|Answer)[:\s]*([A-G,\s]+)(?=\n|$)", 
+            re.IGNORECASE
+        )
         self.explanation_pattern = re.compile(r"Explanation:\s*(.+?)(?=(?:Question: \d+|Topic \d+, |Case Study: \d+|$))", re.DOTALL)
 
-    def process_text(self, text: str) -> Dict:
-        """
-        Process text content and return structured data.
+    # def process_text(self, text: str) -> Dict:
+    #     """
+    #     Process text content and return structured data.
         
-        Args:
-            text: The text content to process
+    #     Args:
+    #         text: The text content to process
             
-        Returns:
-            Dictionary containing processed topic data
+    #     Returns:
+    #         Dictionary containing processed topic data
+    #     """
+    #     all_topics_data = {}
+    #     topics_found = self.extract_topics(text)
+    #     if not topics_found:
+    #         # Process as a single default topic
+    #         case_study_text = self.extract_case_study_text(text)
+    #         questions = self.extract_questions(text)
+    #         all_topics_data["topic0"] = {
+    #             "topic_name": "",
+    #             "case_study": case_study_text,
+    #             "questions": questions
+    #         }
+    #     else:
+    #         for i, match in enumerate(topics_found):
+    #             topic_data = self.process_topic_match(match)
+    #             all_topics_data[f"topic{topic_data['number']}"] = topic_data['data']
+
+    #     # json_string = json.dumps(all_topics_data, indent=4)
+    #     # with open('test_json.json', 'w') as f:
+    #     #     f.write(json_string)
+    #     return all_topics_data
+
+    def process_text(self, text: str) -> Dict:
+        """New version that handles questions before topics
+    
+          Process text content and return structured data.
+        
+          Args:
+              text: The text content to process
+            
+          Returns:
+              Dictionary containing processed topic data
         """
+
         all_topics_data = {}
+        
+        # Get ALL questions first (with their positions)
+        all_questions = {
+            q_match.start(): self.process_question_match(q_match)
+            for q_match in self.question_pattern.finditer(text)
+        }
+        
+        # Process topics (original logic but tracks positions)
         topics_found = self.extract_topics(text)
+        
         if not topics_found:
-            # Process as a single default topic
-            case_study_text = self.extract_case_study_text(text)
-            questions = self.extract_questions(text)
+            # Original fallback if no topics found
             all_topics_data["topic0"] = {
                 "topic_name": "",
-                "case_study": case_study_text,
-                "questions": questions
+                "case_study": self.extract_case_study_text(text),
+                "questions": list(all_questions.values())
             }
         else:
-            for i, match in enumerate(topics_found):
-                topic_data = self.process_topic_match(match)
-                all_topics_data[f"topic{topic_data['number']}"] = topic_data['data']
-
-        # json_string = json.dumps(all_topics_data, indent=4)
-        # with open('test_json.json', 'w') as f:
-        #     f.write(json_string)
+            prev_topic_end = 0
+            for i, topic_match in enumerate(topics_found):
+                topic_start = topic_match.start()
+                topic_data = self.process_topic_match(topic_match)
+                topic_num = topic_data["number"]
+                
+                # Assign questions between topics to previous topic (or topic0)
+                questions_in_gap = [
+                    q for pos, q in all_questions.items()
+                    if prev_topic_end <= pos < topic_start
+                ]
+                
+                if i == 0 and questions_in_gap:  # Questions before first topic
+                    all_topics_data["topic0"] = {
+                        "topic_name": "",
+                        "case_study": "",
+                        "questions": questions_in_gap
+                    }
+                
+                # Add the topic itself
+                all_topics_data[f"topic{topic_num}"] = topic_data["data"]
+                prev_topic_end = topic_match.end()
+            
+            # Handle questions after last topic
+            remaining_questions = [
+                q for pos, q in all_questions.items()
+                if pos >= prev_topic_end
+            ]
+            if remaining_questions:
+                if "topic0" not in all_topics_data:
+                    all_topics_data["topic0"] = {
+                        "topic_name": "General Questions",
+                        "case_study": "",
+                        "questions": []
+                    }
+                all_topics_data["topic0"]["questions"].extend(remaining_questions)
+        
         return all_topics_data
 
     def extract_topics(self, text: str) -> List[Match]:
@@ -102,7 +180,7 @@ class TopicProcessor:
         full_question_text = question_match.group(2).strip()
         
         # Split text at "Answer:" to separate options from answer/explanation
-        parts = re.split(r'Answer:', full_question_text, 1)
+        parts = re.split(r'Correct Answer|Answer:', full_question_text, 1)
         question_with_options = parts[0].strip()
         answer_explanation_text = "Answer:" + parts[1] if len(parts) > 1 else ""
 

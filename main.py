@@ -72,14 +72,53 @@ async def process_pdf(file: UploadFile = File(...)):
             text_content = "\n".join(cleaned_lines)
             result = process_content(text_content)
 
-            result = {"topics": result}
+            full_image_paths = [f"/static/images/{original_filename}/{img}" for img in extracted_images]
+            
+            def replace_img_paths(data: dict, images_list: list) -> dict:
+                """
+                Replaces all <img src='images/...'> tags in the dictionary with full paths from images_list.
+                
+                Args:
+                    data: The dictionary containing questions and image references
+                    images_list: List of full image paths
+                    
+                Returns:
+                    Dictionary with updated image paths
+                """
+                # Create mapping of base filenames to full paths
+                image_map = {}
+                for full_path in images_list:
+                    filename = os.path.basename(full_path)
+                    image_map[filename] = full_path
+                
+                # Recursively process the dictionary
+                def process_item(item):
+                    if isinstance(item, dict):
+                        return {k: process_item(v) for k, v in item.items()}
+                    elif isinstance(item, list):
+                        return [process_item(i) for i in item]
+                    elif isinstance(item, str):
+                        # Replace <img> tags with full paths
+                        matches = re.findall(r"<img src='images/([^']+)'>", item)
+                        for filename in matches:
+                            if filename in image_map:
+                                item = item.replace(
+                                    f"<img src='images/{filename}'>", 
+                                    image_map[filename]
+                                )
+                        return item
+                    else:
+                        return item
+                
+                return process_item(data)
+            updated_result = replace_img_paths(result, full_image_paths)
+
+            result = {"topics": updated_result}
             de_dup_result=remove_duplicate_questions(result)
-            # json_string = json.dumps(de_dup_result, indent=4)
-            # with open('test_json.json', 'w') as f:
-            #     f.write(json_string)
+           
             return JSONResponse(content={
                 "result": de_dup_result,
-                "images": [f"/static/images/{original_filename}/{img}" for img in extracted_images]
+                "images": full_image_paths
         })
     except Exception as e:
         return JSONResponse(
