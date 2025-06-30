@@ -18,3 +18,6 @@ def upload_image_bytes_to_supabase(img_bytes, dest_path, bucket="file-images"):
     # Get public URL
     public_url = supabase.storage.from_(bucket).get_public_url(dest_path)
     return public_url
+
+# ADD THIS LINE SO THE OLD IMPORT WORKS:
+upload_image_to_supabase = upload_image_bytes_to_supabase
