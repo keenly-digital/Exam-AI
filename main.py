@@ -86,15 +86,15 @@ async def process_pdf(file: UploadFile = File(...)):
             result = process_content(text_content)
 
             # NEW: Upload each image to Supabase, get public URLs
+           
             print(f"Uploading {img_path} to Supabase as {dest_path} ...")
-           supabase_image_urls = []
-for img_path in extracted_images:
-    dest_path = f"{original_filename}/{os.path.basename(img_path)}"
-    print(f"Uploading {img_path} to bucket {bucket}, dest {dest_path}")
-    public_url = upload_image_to_supabase(img_path, bucket="file-images", dest_path=dest_path)
-    print(f"Uploaded {img_path}, got public URL: {public_url}")
-    supabase_image_urls.append(public_url)
-
+            supabase_image_urls = []
+            for img_path in extracted_images:
+                dest_path = f"{original_filename}/{os.path.basename(img_path)}"
+                print(f"Uploading {img_path} to bucket file-images, dest {dest_path}")
+                public_url = upload_image_to_supabase(img_path, bucket="file-images", dest_path=dest_path)
+                print(f"Uploaded {img_path}, got public URL: {public_url}")
+                supabase_image_urls.append(public_url)
 
             # Map: filename -> Supabase URL
             supabase_image_map = {}
