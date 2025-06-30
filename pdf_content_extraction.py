@@ -12,6 +12,9 @@ def parse_pdf_and_extract_images(
     pdf_path: str,
     output_txt_path: str = "extracted_text.txt"
 ) -> Tuple[str, List[str], List[str]]:
+    """
+    Parse PDF, upload images to Supabase, and store ONLY public URLs in output.
+    """
 
     doc = fitz.open(pdf_path)
     lines_with_placeholders = []
@@ -29,6 +32,7 @@ def parse_pdf_and_extract_images(
                 image_obj = block["image"]
                 image_count += 1
 
+                # Handle images as dict (most cases)
                 if isinstance(image_obj, dict):
                     xref = image_obj.get("xref")
                     if xref is not None:
@@ -39,13 +43,26 @@ def parse_pdf_and_extract_images(
                             img_filename = f"page_{page_index + 1}_img_{image_count}.{ext}"
                             file_path_in_bucket = f"{pdf_base_name}/{img_filename}"
 
-                            # Upload to Supabase Storage
-                            supabase.storage.from_(BUCKET_NAME).upload(file_path_in_bucket, img_bytes)
+                            # Save img_bytes temporarily to upload (Supabase Python SDK requires a file-like object)
+                            # We'll use io.BytesIO for in-memory upload
+                            import io
+                            file_like = io.BytesIO(img_bytes)
 
-                            # Get public URL (CORRECT FORMAT)
-                            public_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{file_path_in_bucket}"
+                            # Upload to Supabase Storage (overwrite if exists)
+                            res = supabase.storage.from_(BUCKET_NAME).upload(
+                                file_path_in_bucket, file_like, {"content-type": f"image/{ext}", "upsert": True}
+                            )
+                            if res.get("error"):
+                                raise Exception(res["error"]["message"])
 
-                            lines_with_placeholders.append(f"<img src='{public_url}'>")
+                            # Get public URL (best practice is to use the SDK method)
+                            public_url = supabase.storage.from_(BUCKET_NAME).get_public_url(file_path_in_bucket)
+                            # Fallback: manually build if above doesn't work
+                            if not public_url:
+                                public_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{file_path_in_bucket}"
+
+                            # **This is the ONLY thing you should store for the frontend/UI**
+                            lines_with_placeholders.append(public_url)
                             extracted_images.append(public_url)
 
                         except Exception as e:
@@ -54,18 +71,25 @@ def parse_pdf_and_extract_images(
                     else:
                         lines_with_placeholders.append("<image could not be extracted>")
 
+                # Handle images as bytes (rare case)
                 elif isinstance(image_obj, bytes):
                     try:
                         img_filename = f"page_{page_index + 1}_img_{image_count}.jpg"
                         file_path_in_bucket = f"{pdf_base_name}/{img_filename}"
 
-                        # Upload to Supabase Storage
-                        supabase.storage.from_(BUCKET_NAME).upload(file_path_in_bucket, image_obj)
+                        import io
+                        file_like = io.BytesIO(image_obj)
+                        res = supabase.storage.from_(BUCKET_NAME).upload(
+                            file_path_in_bucket, file_like, {"content-type": "image/jpeg", "upsert": True}
+                        )
+                        if res.get("error"):
+                            raise Exception(res["error"]["message"])
 
-                        # Get public URL (CORRECT FORMAT)
-                        public_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{file_path_in_bucket}"
+                        public_url = supabase.storage.from_(BUCKET_NAME).get_public_url(file_path_in_bucket)
+                        if not public_url:
+                            public_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{file_path_in_bucket}"
 
-                        lines_with_placeholders.append(f"<img src='{public_url}'>")
+                        lines_with_placeholders.append(public_url)
                         extracted_images.append(public_url)
                     except Exception as e:
                         print(f"Error saving image: {e}")
@@ -73,6 +97,7 @@ def parse_pdf_and_extract_images(
                 else:
                     lines_with_placeholders.append("<image could not be extracted>")
 
+            # Normal text block
             if "lines" in block:
                 for line in block["lines"]:
                     text_line = "".join(span["text"] for span in line["spans"]).strip()
@@ -81,16 +106,18 @@ def parse_pdf_and_extract_images(
 
     doc.close()
 
-    # You should have these functions somewhere
+    # Clean the lines as usual (this step is unchanged)
     cleaned_lines = clean_lines(lines_with_placeholders)
     cleaned_lines = remove_qna_pdf_lines(cleaned_lines)
 
+    # Save cleaned text if needed
     if output_txt_path:
         with open(output_txt_path, "w", encoding="utf-8") as txt_file:
             for line in cleaned_lines:
                 txt_file.write(line + "\n")
 
     return output_txt_path, cleaned_lines, extracted_images
+
 
 
 

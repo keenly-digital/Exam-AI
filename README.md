@@ -86,3 +86,10 @@ The API includes validation for:
 - Starlette (0.27.0) - ASGI framework
 - Typing-extensions (4.8.0) - Type hinting support
 
+## Image Handling (Updated)
+
+- Extracted images are uploaded to **Supabase Storage** in the bucket you specify.
+- API responses now return the full **Supabase public URL** for each extracted image.
+- Example:  
+  `https://kxbjsyuhceggsyvxdkof.supabase.co/storage/v1/object/public/file-images/TDA-C01 - Tableau Certified Data Analyst/page_3_img_1.jpg`
+- **No local static files are served** from `/static/images/` anymore.
