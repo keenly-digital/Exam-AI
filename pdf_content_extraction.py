@@ -86,6 +86,8 @@ def parse_pdf_and_extract_images(
         image_count = 0
 
         for block in page_dict["blocks"]:
+                print("BLOCK:", block)
+
             if "image" in block:
                 image_obj = block["image"]
                 image_count += 1
@@ -100,6 +102,13 @@ def parse_pdf_and_extract_images(
                             img_bytes = base_image["image"]
                             img_filename = f"page_{page_index + 1}_img_{image_count}.{ext}"
                             file_path_in_bucket = f"{pdf_base_name}/{img_filename}"
+
+                              # --------- ADD THIS DEBUGGING BLOCK RIGHT BELOW img_bytes ---------
+                            local_debug_path = f"/tmp/debug_{img_filename}"
+                            with open(local_debug_path, "wb") as f:
+                                f.write(img_bytes)
+                            print(f"Saved extracted image to {local_debug_path}")
+                            # ---------------------------------------------------------------
 
                             # Save img_bytes temporarily to upload (Supabase Python SDK requires a file-like object)
                             # We'll use io.BytesIO for in-memory upload
