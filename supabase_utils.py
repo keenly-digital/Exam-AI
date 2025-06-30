@@ -2,18 +2,17 @@ from supabase import create_client, Client
 import os
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://kxbjsyuhceggsyvxdkof.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YmpzeXVoY2VnZ3N5dnhka29mIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTIwODk5NiwiZXhwIjoyMDY2Nzg0OTk2fQ.uNALBmMDiFQat6CKjGmFYRFXfw4ovb2hTRmd3rK1RaI")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "your-key")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def upload_image_to_supabase(local_file_path, bucket="file-images", dest_path=None):
+def upload_image_bytes_to_supabase(img_bytes, dest_path, bucket="file-images"):
     """
-    Upload a file to Supabase Storage and return its public URL.
+    Upload image bytes to Supabase Storage and return the public URL.
+    - img_bytes: image bytes (not a filename!)
+    - dest_path: destination path in the bucket (e.g., 'pdf1/page_1_img_1.png')
     """
-    if dest_path is None:
-        dest_path = os.path.basename(local_file_path)
-    with open(local_file_path, "rb") as f:
-        res = supabase.storage.from_(bucket).upload(dest_path, f)
+    res = supabase.storage.from_(bucket).upload(dest_path, img_bytes)
     if res.get("error"):
         raise Exception(res["error"]["message"])
     # Get public URL
