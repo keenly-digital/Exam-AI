@@ -25,7 +25,7 @@ app.add_middleware(
 )
 
 
-// image_dir = "static/images"
+# image_dir = "static/images"
 
 # Mount the static directory (FastAPI serves images from here)
 app.mount("/static", StaticFiles(directory="static"), name="static")
