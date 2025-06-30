@@ -85,12 +85,10 @@ def parse_pdf_and_extract_images(
         page_dict = page.get_text("dict")
         image_count = 0
 
-        for block in page_dict["blocks"]:
-                print("BLOCK:", block)
-
-            if "image" in block:
-                image_obj = block["image"]
-                image_count += 1
+       for block in page_dict["blocks"]:
+    if "image" in block:
+        image_obj = block["image"]
+        image_count += 1
 
                 # Handle images as dict (most cases)
                 if isinstance(image_obj, dict):
