@@ -1,12 +1,70 @@
 import fitz
 import os  # Needed for os.path functions
 from typing import Tuple, List
+from supabase_utils import supabase, BUCKET_NAME, SUPABASE_URL
+
 
 # You must initialize these somewhere globally!
 # from supabase import create_client, Client
 # supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # BUCKET_NAME = "file-images"
 # SUPABASE_URL = "https://kxbjsyuhceggsyvxdkof.supabase.co"
+
+
+def clean_lines(lines):
+    """
+    Refined logic:
+    - Match lines with '.COM' or 'CERT MAGE'
+    - Remove those lines and intelligently decide how many surrounding lines to remove
+    """
+    to_remove = set()
+    n = len(lines)
+
+    def is_integer(s):
+        try:
+            return str(int(s)) == s
+        except ValueError:
+            return False
+
+    for i, line in enumerate(lines):
+        if line.endswith(".COM") or "CERT MAGE" in line:
+            match_idx = i
+            to_remove.add(match_idx)
+            prev = lines[i - 1] if i - 1 >= 0 else ""
+            next_ = lines[i + 1] if i + 1 < n else ""
+            next2 = lines[i + 2] if i + 2 < n else ""
+
+            if is_integer(prev):
+                to_remove.update(range(max(0, i - 3), i))
+            elif is_integer(next_):
+                if not is_integer(next2) and "Exam Dumps" not in next2:
+                    to_remove.update([i + 1, i + 2])
+                else:
+                    to_remove.update(range(i + 1, min(n, i + 4)))
+            elif "Exam Dumps" in prev:
+                to_remove.update(range(max(0, i - 2), i))
+            elif "Exam Dumps" in next_:
+                to_remove.update(range(i + 1, min(n, i + 3)))
+    return [line for idx, line in enumerate(lines) if idx not in to_remove]
+
+
+def remove_qna_pdf_lines(lines):
+    """
+    Removes lines containing 'Questions and Answers PDF' and the next line.
+    """
+    filtered_lines = []
+    skip_next = False
+
+    for line in lines:
+        if skip_next:
+            skip_next = False
+            continue
+        if 'Questions and Answers PDF' in line:
+            skip_next = True
+            continue
+        filtered_lines.append(line)
+    return filtered_lines
+
 
 def parse_pdf_and_extract_images(
     pdf_path: str,
