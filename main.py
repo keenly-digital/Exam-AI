@@ -25,7 +25,7 @@ app.add_middleware(
 )
 
 
-image_dir = "static/images"
+// image_dir = "static/images"
 
 # Mount the static directory (FastAPI serves images from here)
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -75,11 +75,10 @@ async def process_pdf(file: UploadFile = File(...)):
                 shutil.copyfileobj(file.file, buffer)
 
             # Step 3: Process PDF
-            _, cleaned_lines, extracted_images = parse_pdf_and_extract_images(
-                pdf_path=temp_pdf_path,
-                output_img_dir=pdf_image_dir,
-                output_txt_path=""
-            )
+          _, cleaned_lines, extracted_images = parse_pdf_and_extract_images(
+    pdf_path=temp_pdf_path,
+    output_txt_path=""
+)
 
             # Step 4: Process content
             text_content = "\n".join(cleaned_lines)
