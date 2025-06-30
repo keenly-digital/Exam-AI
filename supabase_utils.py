@@ -2,7 +2,7 @@ from supabase import create_client, Client
 import os
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://kxbjsyuhceggsyvxdkof.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "your-key")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YmpzeXVoY2VnZ3N5dnhka29mIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTIwODk5NiwiZXhwIjoyMDY2Nzg0OTk2fQ.uNALBmMDiFQat6CKjGmFYRFXfw4ovb2hTRmd3rK1RaI")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
