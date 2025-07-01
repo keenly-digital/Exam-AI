@@ -3,6 +3,49 @@ import os
 from typing import Tuple, List
 from supabase_utils import supabase, BUCKET_NAME, SUPABASE_URL
 
+def clean_lines(lines):
+    """Removes header/footer lines from the document."""
+    to_remove = set()
+    n = len(lines)
+    def is_integer(s):
+        try:
+            return str(int(s)) == s
+        except ValueError:
+            return False
+    for i, line in enumerate(lines):
+        if line.endswith(".COM") or "CERT MAGE" in line:
+            match_idx = i
+            to_remove.add(match_idx)
+            prev = lines[i - 1] if i - 1 >= 0 else ""
+            next_ = lines[i + 1] if i + 1 < n else ""
+            next2 = lines[i + 2] if i + 2 < n else ""
+            if is_integer(prev):
+                to_remove.update(range(max(0, i - 3), i))
+            elif is_integer(next_):
+                if not is_integer(next2) and "Exam Dumps" not in next2:
+                    to_remove.update([i + 1, i + 2])
+                else:
+                    to_remove.update(range(i + 1, min(n, i + 4)))
+            elif "Exam Dumps" in prev:
+                to_remove.update(range(max(0, i - 2), i))
+            elif "Exam Dumps" in next_:
+                to_remove.update(range(i + 1, min(n, i + 3)))
+    return [line for idx, line in enumerate(lines) if idx not in to_remove]
+
+def remove_qna_pdf_lines(lines):
+    """Removes 'Questions and Answers PDF' lines."""
+    filtered_lines = []
+    skip_next = False
+    for line in lines:
+        if skip_next:
+            skip_next = False
+            continue
+        if 'Questions and Answers PDF' in line:
+            skip_next = True
+            continue
+        filtered_lines.append(line)
+    return filtered_lines
+
 def parse_pdf_and_extract_images(
     pdf_path: str,
     output_txt_path: str = "extracted_text.txt"
@@ -22,7 +65,6 @@ def parse_pdf_and_extract_images(
                 image_obj = block["image"]
                 image_count += 1
 
-                # Handle images as dict (most cases)
                 if isinstance(image_obj, dict):
                     xref = image_obj.get("xref")
                     if xref is not None:
@@ -32,13 +74,10 @@ def parse_pdf_and_extract_images(
                             img_bytes = base_image["image"]
                             img_filename = f"page_{page_index + 1}_img_{image_count}.{ext}"
                             file_path_in_bucket = f"{pdf_base_name}/{img_filename}"
-
-                            # FIX: Pass raw bytes to .upload() and use "true" for upsert
+                            
                             res = supabase.storage.from_(BUCKET_NAME).upload(
                                 file_path_in_bucket, img_bytes, {"content-type": f"image/{ext}", "upsert": "true"}
                             )
-
-                            # FIX: The .get("error") check is removed, as errors are now exceptions.
                             
                             public_url = supabase.storage.from_(BUCKET_NAME).get_public_url(file_path_in_bucket)
                             if not public_url:
@@ -52,19 +91,15 @@ def parse_pdf_and_extract_images(
                     else:
                         lines_with_placeholders.append("<image could not be extracted>")
                 
-                # Handle images as bytes (rare case)
                 elif isinstance(image_obj, bytes):
                     try:
                         img_filename = f"page_{page_index + 1}_img_{image_count}.jpg"
                         file_path_in_bucket = f"{pdf_base_name}/{img_filename}"
                         
-                        # FIX: Pass raw bytes to .upload() and use "true" for upsert
                         res = supabase.storage.from_(BUCKET_NAME).upload(
                             file_path_in_bucket, image_obj, {"content-type": "image/jpeg", "upsert": "true"}
                         )
                         
-                        # FIX: The .get("error") check is removed.
-
                         public_url = supabase.storage.from_(BUCKET_NAME).get_public_url(file_path_in_bucket)
                         if not public_url:
                             public_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{file_path_in_bucket}"
@@ -77,7 +112,6 @@ def parse_pdf_and_extract_images(
                 else:
                     lines_with_placeholders.append("<image could not be extracted>")
 
-            # Normal text block
             if "lines" in block:
                 for line in block["lines"]:
                     text_line = "".join(span["text"] for span in line["spans"]).strip()
@@ -85,6 +119,8 @@ def parse_pdf_and_extract_images(
                         lines_with_placeholders.append(text_line)
 
     doc.close()
+
+    # The helper functions are now defined above, so these calls will work.
     cleaned_lines = clean_lines(lines_with_placeholders)
     cleaned_lines = remove_qna_pdf_lines(cleaned_lines)
 
