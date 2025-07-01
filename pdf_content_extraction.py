@@ -14,8 +14,7 @@ def clean_lines(lines):
             return False
     for i, line in enumerate(lines):
         if line.endswith(".COM") or "CERT MAGE" in line:
-            match_idx = i
-            to_remove.add(match_idx)
+            to_remove.add(i)
             prev = lines[i - 1] if i - 1 >= 0 else ""
             next_ = lines[i + 1] if i + 1 < n else ""
             next2 = lines[i + 2] if i + 2 < n else ""
@@ -46,14 +45,15 @@ def remove_qna_pdf_lines(lines):
         filtered_lines.append(line)
     return filtered_lines
 
-def parse_pdf_and_extract_images(
-    pdf_path: str,
-    output_txt_path: str = "extracted_text.txt"
-) -> Tuple[List[str], dict]: # Return signature has changed
+def parse_pdf_and_extract_images(pdf_path: str, output_txt_path: str = "") -> Tuple[List[str], dict]:
+    """
+    Parses PDF, uploads images to Supabase, and returns text with placeholders and a map of placeholders to URLs.
+    """
     doc = fitz.open(pdf_path)
     lines_with_placeholders = []
-    placeholder_map = {} # New: To map placeholders to URLs
-    image_placeholder_counter = 0 # New: To create unique placeholders
+    placeholder_map = {}
+    image_placeholder_counter = 0
+    pdf_base_name = os.path.splitext(os.path.basename(pdf_path))[0].replace(" ", "_")
 
     for page_index in range(1, len(doc)):
         page = doc[page_index]
@@ -62,26 +62,15 @@ def parse_pdf_and_extract_images(
         for block in page_dict["blocks"]:
             if "image" in block:
                 try:
-                    image_obj = block["image"]
-                    img_bytes = None
-                    ext = ".jpg" # Default extension
-
-                    if isinstance(image_obj, dict):
-                        xref = image_obj.get("xref")
-                        if xref:
-                            base_image = doc.extract_image(xref)
-                            img_bytes = base_image["image"]
-                            ext = base_image["ext"]
-                    elif isinstance(image_obj, bytes):
-                        img_bytes = image_obj
+                    img_bytes, ext = None, "jpg"
+                    if isinstance(block["image"], dict) and block["image"].get("xref"):
+                        base_image = doc.extract_image(block["image"]["xref"])
+                        img_bytes, ext = base_image["image"], base_image["ext"]
+                    elif isinstance(block["image"], bytes):
+                        img_bytes = block["image"]
 
                     if img_bytes:
-                        # Create a unique placeholder
                         placeholder = f"%%IMAGE_{image_placeholder_counter}%%"
-                        image_placeholder_counter += 1
-
-                        # Upload to Supabase
-                        pdf_base_name = os.path.splitext(os.path.basename(pdf_path))[0].replace(" ", "_")
                         img_filename = f"page_{page_index + 1}_img_{image_placeholder_counter}.{ext}"
                         file_path_in_bucket = f"{pdf_base_name}/{img_filename}"
                         
@@ -89,19 +78,17 @@ def parse_pdf_and_extract_images(
                             file_path_in_bucket, img_bytes, {"content-type": f"image/{ext}", "upsert": "true"}
                         )
                         
-                        # Get URL and store it in our map
                         public_url = supabase.storage.from_(BUCKET_NAME).get_public_url(file_path_in_bucket)
                         placeholder_map[placeholder] = public_url
-
-                        # Add the placeholder to the text stream, not the URL
                         lines_with_placeholders.append(placeholder)
+                        image_placeholder_counter += 1
                     else:
                         lines_with_placeholders.append("<image could not be extracted>")
                 except Exception as e:
                     print(f"Error processing image: {e}")
                     lines_with_placeholders.append("<image could not be extracted>")
 
-            if "lines" in block:
+            elif "lines" in block:
                 for line in block["lines"]:
                     text_line = "".join(span["text"] for span in line["spans"]).strip()
                     if text_line:
@@ -110,6 +97,4 @@ def parse_pdf_and_extract_images(
     doc.close()
     cleaned_lines = clean_lines(lines_with_placeholders)
     cleaned_lines = remove_qna_pdf_lines(cleaned_lines)
-
-    # Return the lines (with placeholders) and the map
     return cleaned_lines, placeholder_map

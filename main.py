@@ -12,26 +12,16 @@ from remove_duplicate_question import remove_duplicate_questions
 app = FastAPI()
 
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
 )
 
 def validate_pdf_file(file: UploadFile):
     if not file:
         raise HTTPException(status_code=400, detail="No file uploaded")
     if not file.filename.lower().endswith('.pdf'):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid file format. Only PDF files are allowed"
-        )
+        raise HTTPException(status_code=400, detail="Invalid file format. Only PDF files are allowed")
     if file.content_type not in ["application/pdf"]:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid file type. Only PDF files are allowed"
-        )
+        raise HTTPException(status_code=400, detail="Invalid file type. Only PDF files are allowed")
 
 @app.post("/process-pdf/")
 async def process_pdf(file: UploadFile = File(...)):
@@ -42,43 +32,25 @@ async def process_pdf(file: UploadFile = File(...)):
             with open(temp_pdf_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
 
-            # Step 1: Returns cleaned text and a map of placeholders to URLs
-            cleaned_lines, placeholder_map = parse_pdf_and_extract_images(
-                pdf_path=temp_pdf_path,
-                output_txt_path=""
-            )
-
-            # Step 2: Pass the text AND the map to the processor
+            cleaned_lines, placeholder_map = parse_pdf_and_extract_images(pdf_path=temp_pdf_path)
             text_content = "\n".join(cleaned_lines)
             result = process_content(text_content, placeholder_map)
             
-            # Step 3: De-duplicate
             result_with_topics = {"topics": result}
             de_dup_result = remove_duplicate_questions(result_with_topics)
 
-            # Step 4: Return the new, structured result
             return JSONResponse(content={
-                "result": de_dup_result,
-                # The 'images' key is now less important but can be kept for a quick overview
-                "images": list(placeholder_map.values())
+                "result": de_dup_result, "images": list(placeholder_map.values())
             })
             
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"An unexpected error occurred: {str(e)}"}
-        )
+        return JSONResponse(status_code=500, content={"error": f"An unexpected error occurred: {str(e)}"})
 
 def start():
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=port,
-        reload=False
-    )
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
 
 if __name__ == "__main__":
     start()
