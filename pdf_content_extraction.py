@@ -14,7 +14,8 @@ def clean_lines(lines):
             return False
     for i, line in enumerate(lines):
         if line.endswith(".COM") or "CERT MAGE" in line:
-            to_remove.add(i)
+            match_idx = i
+            to_remove.add(match_idx)
             prev = lines[i - 1] if i - 1 >= 0 else ""
             next_ = lines[i + 1] if i + 1 < n else ""
             next2 = lines[i + 2] if i + 2 < n else ""
@@ -45,56 +46,88 @@ def remove_qna_pdf_lines(lines):
         filtered_lines.append(line)
     return filtered_lines
 
-def parse_pdf_and_extract_images(pdf_path: str, output_txt_path: str = "") -> Tuple[List[str], dict]:
-    """
-    Parses PDF, uploads images to Supabase, and returns text with placeholders and a map of placeholders to URLs.
-    """
+def parse_pdf_and_extract_images(
+    pdf_path: str,
+    output_txt_path: str = "extracted_text.txt"
+) -> Tuple[str, List[str], List[str]]:
     doc = fitz.open(pdf_path)
     lines_with_placeholders = []
-    placeholder_map = {}
-    image_placeholder_counter = 0
-    pdf_base_name = os.path.splitext(os.path.basename(pdf_path))[0].replace(" ", "_")
+    extracted_images = []
+    pdf_base_name = os.path.splitext(os.path.basename(pdf_path))[0]
+    pdf_base_name = pdf_base_name.replace(" ", "_") # Add this line
 
-    for page_index in range(1, len(doc)):
+    for page_index in range(1, len(doc)):  # Skip first and last pages
         page = doc[page_index]
         page_dict = page.get_text("dict")
-        
+        image_count = 0
+
         for block in page_dict["blocks"]:
             if "image" in block:
-                try:
-                    img_bytes, ext = None, "jpg"
-                    if isinstance(block["image"], dict) and block["image"].get("xref"):
-                        base_image = doc.extract_image(block["image"]["xref"])
-                        img_bytes, ext = base_image["image"], base_image["ext"]
-                    elif isinstance(block["image"], bytes):
-                        img_bytes = block["image"]
+                image_obj = block["image"]
+                image_count += 1
 
-                    if img_bytes:
-                        placeholder = f"%%IMAGE_{image_placeholder_counter}%%"
-                        img_filename = f"page_{page_index + 1}_img_{image_placeholder_counter}.{ext}"
+                if isinstance(image_obj, dict):
+                    xref = image_obj.get("xref")
+                    if xref is not None:
+                        try:
+                            base_image = doc.extract_image(xref)
+                            ext = base_image["ext"]
+                            img_bytes = base_image["image"]
+                            img_filename = f"page_{page_index + 1}_img_{image_count}.{ext}"
+                            file_path_in_bucket = f"{pdf_base_name}/{img_filename}"
+                            
+                            res = supabase.storage.from_(BUCKET_NAME).upload(
+                                file_path_in_bucket, img_bytes, {"content-type": f"image/{ext}", "upsert": "true"}
+                            )
+                            
+                            public_url = supabase.storage.from_(BUCKET_NAME).get_public_url(file_path_in_bucket)
+                            if not public_url:
+                                public_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{file_path_in_bucket}"
+                            lines_with_placeholders.append(public_url)
+                            extracted_images.append(public_url)
+
+                        except Exception as e:
+                            print(f"Error extracting image: {e}")
+                            lines_with_placeholders.append("<image could not be extracted>")
+                    else:
+                        lines_with_placeholders.append("<image could not be extracted>")
+                
+                elif isinstance(image_obj, bytes):
+                    try:
+                        img_filename = f"page_{page_index + 1}_img_{image_count}.jpg"
                         file_path_in_bucket = f"{pdf_base_name}/{img_filename}"
                         
-                        supabase.storage.from_(BUCKET_NAME).upload(
-                            file_path_in_bucket, img_bytes, {"content-type": f"image/{ext}", "upsert": "true"}
+                        res = supabase.storage.from_(BUCKET_NAME).upload(
+                            file_path_in_bucket, image_obj, {"content-type": "image/jpeg", "upsert": "true"}
                         )
                         
                         public_url = supabase.storage.from_(BUCKET_NAME).get_public_url(file_path_in_bucket)
-                        placeholder_map[placeholder] = public_url
-                        lines_with_placeholders.append(placeholder)
-                        image_placeholder_counter += 1
-                    else:
+                        if not public_url:
+                            public_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{file_path_in_bucket}"
+                        lines_with_placeholders.append(public_url)
+                        extracted_images.append(public_url)
+
+                    except Exception as e:
+                        print(f"Error saving image: {e}")
                         lines_with_placeholders.append("<image could not be extracted>")
-                except Exception as e:
-                    print(f"Error processing image: {e}")
+                else:
                     lines_with_placeholders.append("<image could not be extracted>")
 
-            elif "lines" in block:
+            if "lines" in block:
                 for line in block["lines"]:
                     text_line = "".join(span["text"] for span in line["spans"]).strip()
                     if text_line:
                         lines_with_placeholders.append(text_line)
 
     doc.close()
+
+    # The helper functions are now defined above, so these calls will work.
     cleaned_lines = clean_lines(lines_with_placeholders)
     cleaned_lines = remove_qna_pdf_lines(cleaned_lines)
-    return cleaned_lines, placeholder_map
+
+    if output_txt_path:
+        with open(output_txt_path, "w", encoding="utf-8") as txt_file:
+            for line in cleaned_lines:
+                txt_file.write(line + "\n")
+
+    return output_txt_path, cleaned_lines, extracted_images
