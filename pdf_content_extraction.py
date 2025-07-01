@@ -82,10 +82,9 @@ def parse_pdf_and_extract_images(
                             # ------------------------------------------------------
 
                             # Upload to Supabase Storage
-                            import io
-                            file_like = io.BytesIO(img_bytes)
+                            # Upload to Supabase Storage
                             res = supabase.storage.from_(BUCKET_NAME).upload(
-                                file_path_in_bucket, file_like, {"content-type": f"image/{ext}", "upsert": True}
+                                file_path_in_bucket, img_bytes, {"content-type": f"image/{ext}", "upsert": True}
                             )
                             if res.get("error"):
                                 raise Exception(res["error"]["message"])
@@ -106,8 +105,8 @@ def parse_pdf_and_extract_images(
                         file_path_in_bucket = f"{pdf_base_name}/{img_filename}"
                         import io
                         file_like = io.BytesIO(image_obj)
-                        res = supabase.storage.from_(BUCKET_NAME).upload(
-                            file_path_in_bucket, file_like, {"content-type": "image/jpeg", "upsert": True}
+                       res = supabase.storage.from_(BUCKET_NAME).upload(
+                       file_path_in_bucket, image_obj, {"content-type": "image/jpeg", "upsert": True}
                         )
                         if res.get("error"):
                             raise Exception(res["error"]["message"])
