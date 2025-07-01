@@ -49,68 +49,56 @@ def remove_qna_pdf_lines(lines):
 def parse_pdf_and_extract_images(
     pdf_path: str,
     output_txt_path: str = "extracted_text.txt"
-) -> Tuple[str, List[str], List[str]]:
+) -> Tuple[List[str], dict]: # Return signature has changed
     doc = fitz.open(pdf_path)
     lines_with_placeholders = []
-    extracted_images = []
-    pdf_base_name = os.path.splitext(os.path.basename(pdf_path))[0]
-    pdf_base_name = pdf_base_name.replace(" ", "_") # Add this line
+    placeholder_map = {} # New: To map placeholders to URLs
+    image_placeholder_counter = 0 # New: To create unique placeholders
 
-    for page_index in range(1, len(doc)):  # Skip first and last pages
+    for page_index in range(1, len(doc)):
         page = doc[page_index]
         page_dict = page.get_text("dict")
-        image_count = 0
-
+        
         for block in page_dict["blocks"]:
             if "image" in block:
-                image_obj = block["image"]
-                image_count += 1
+                try:
+                    image_obj = block["image"]
+                    img_bytes = None
+                    ext = ".jpg" # Default extension
 
-                if isinstance(image_obj, dict):
-                    xref = image_obj.get("xref")
-                    if xref is not None:
-                        try:
+                    if isinstance(image_obj, dict):
+                        xref = image_obj.get("xref")
+                        if xref:
                             base_image = doc.extract_image(xref)
-                            ext = base_image["ext"]
                             img_bytes = base_image["image"]
-                            img_filename = f"page_{page_index + 1}_img_{image_count}.{ext}"
-                            file_path_in_bucket = f"{pdf_base_name}/{img_filename}"
-                            
-                            res = supabase.storage.from_(BUCKET_NAME).upload(
-                                file_path_in_bucket, img_bytes, {"content-type": f"image/{ext}", "upsert": "true"}
-                            )
-                            
-                            public_url = supabase.storage.from_(BUCKET_NAME).get_public_url(file_path_in_bucket)
-                            if not public_url:
-                                public_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{file_path_in_bucket}"
-                            lines_with_placeholders.append(public_url)
-                            extracted_images.append(public_url)
+                            ext = base_image["ext"]
+                    elif isinstance(image_obj, bytes):
+                        img_bytes = image_obj
 
-                        except Exception as e:
-                            print(f"Error extracting image: {e}")
-                            lines_with_placeholders.append("<image could not be extracted>")
-                    else:
-                        lines_with_placeholders.append("<image could not be extracted>")
-                
-                elif isinstance(image_obj, bytes):
-                    try:
-                        img_filename = f"page_{page_index + 1}_img_{image_count}.jpg"
+                    if img_bytes:
+                        # Create a unique placeholder
+                        placeholder = f"%%IMAGE_{image_placeholder_counter}%%"
+                        image_placeholder_counter += 1
+
+                        # Upload to Supabase
+                        pdf_base_name = os.path.splitext(os.path.basename(pdf_path))[0].replace(" ", "_")
+                        img_filename = f"page_{page_index + 1}_img_{image_placeholder_counter}.{ext}"
                         file_path_in_bucket = f"{pdf_base_name}/{img_filename}"
                         
-                        res = supabase.storage.from_(BUCKET_NAME).upload(
-                            file_path_in_bucket, image_obj, {"content-type": "image/jpeg", "upsert": "true"}
+                        supabase.storage.from_(BUCKET_NAME).upload(
+                            file_path_in_bucket, img_bytes, {"content-type": f"image/{ext}", "upsert": "true"}
                         )
                         
+                        # Get URL and store it in our map
                         public_url = supabase.storage.from_(BUCKET_NAME).get_public_url(file_path_in_bucket)
-                        if not public_url:
-                            public_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{file_path_in_bucket}"
-                        lines_with_placeholders.append(public_url)
-                        extracted_images.append(public_url)
+                        placeholder_map[placeholder] = public_url
 
-                    except Exception as e:
-                        print(f"Error saving image: {e}")
+                        # Add the placeholder to the text stream, not the URL
+                        lines_with_placeholders.append(placeholder)
+                    else:
                         lines_with_placeholders.append("<image could not be extracted>")
-                else:
+                except Exception as e:
+                    print(f"Error processing image: {e}")
                     lines_with_placeholders.append("<image could not be extracted>")
 
             if "lines" in block:
@@ -120,14 +108,8 @@ def parse_pdf_and_extract_images(
                         lines_with_placeholders.append(text_line)
 
     doc.close()
-
-    # The helper functions are now defined above, so these calls will work.
     cleaned_lines = clean_lines(lines_with_placeholders)
     cleaned_lines = remove_qna_pdf_lines(cleaned_lines)
 
-    if output_txt_path:
-        with open(output_txt_path, "w", encoding="utf-8") as txt_file:
-            for line in cleaned_lines:
-                txt_file.write(line + "\n")
-
-    return output_txt_path, cleaned_lines, extracted_images
+    # Return the lines (with placeholders) and the map
+    return cleaned_lines, placeholder_map

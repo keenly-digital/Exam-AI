@@ -37,31 +37,30 @@ def validate_pdf_file(file: UploadFile):
 async def process_pdf(file: UploadFile = File(...)):
     validate_pdf_file(file)
     try:
-        # Create a temporary directory to store the uploaded PDF
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_pdf_path = os.path.join(temp_dir, file.filename)
             with open(temp_pdf_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
 
-            # Step 1: Process the PDF. This single function now handles text extraction
-            # and image uploading, returning final, public Supabase URLs.
-            _, cleaned_lines, supabase_image_urls = parse_pdf_and_extract_images(
+            # Step 1: Returns cleaned text and a map of placeholders to URLs
+            cleaned_lines, placeholder_map = parse_pdf_and_extract_images(
                 pdf_path=temp_pdf_path,
                 output_txt_path=""
             )
 
-            # Step 2: Process the cleaned text (which includes the final image URLs).
+            # Step 2: Pass the text AND the map to the processor
             text_content = "\n".join(cleaned_lines)
-            result = process_content(text_content)
+            result = process_content(text_content, placeholder_map)
             
-            # Step 3: De-duplicate questions.
+            # Step 3: De-duplicate
             result_with_topics = {"topics": result}
             de_dup_result = remove_duplicate_questions(result_with_topics)
 
-            # Step 4: Return the final result. No more processing is needed.
+            # Step 4: Return the new, structured result
             return JSONResponse(content={
                 "result": de_dup_result,
-                "images": supabase_image_urls
+                # The 'images' key is now less important but can be kept for a quick overview
+                "images": list(placeholder_map.values())
             })
             
     except Exception as e:
