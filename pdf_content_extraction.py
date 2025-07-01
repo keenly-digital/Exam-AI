@@ -83,7 +83,7 @@ def parse_pdf_and_extract_images(
 
                             # Correctly pass img_bytes directly to the upload function
                             res = supabase.storage.from_(BUCKET_NAME).upload(
-                                file_path_in_bucket, img_bytes, {"content-type": f"image/{ext}", "upsert": True}
+                                file_path_in_bucket, img_bytes, {"content-type": f"image/{ext}", "upsert": "true"}
                             )
                             
                             if res.get("error"):
@@ -108,7 +108,7 @@ def parse_pdf_and_extract_images(
                         
                         # Correctly pass image_obj directly to the upload function
                         res = supabase.storage.from_(BUCKET_NAME).upload(
-                            file_path_in_bucket, image_obj, {"content-type": "image/jpeg", "upsert": True}
+                            file_path_in_bucket, image_obj, {"content-type": "image/jpeg", "upsert": "true"}
                         )
                         
                         if res.get("error"):
