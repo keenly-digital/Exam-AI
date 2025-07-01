@@ -81,11 +81,11 @@ def parse_pdf_and_extract_images(
                             print(f"Saved extracted image to {local_debug_path}")
                             # ------------------------------------------------------
 
-                            # Upload to Supabase Storage
-                            # Upload to Supabase Storage
+                            # Correctly pass img_bytes directly to the upload function
                             res = supabase.storage.from_(BUCKET_NAME).upload(
                                 file_path_in_bucket, img_bytes, {"content-type": f"image/{ext}", "upsert": True}
                             )
+                            
                             if res.get("error"):
                                 raise Exception(res["error"]["message"])
                             public_url = supabase.storage.from_(BUCKET_NAME).get_public_url(file_path_in_bucket)
@@ -93,21 +93,24 @@ def parse_pdf_and_extract_images(
                                 public_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{file_path_in_bucket}"
                             lines_with_placeholders.append(public_url)
                             extracted_images.append(public_url)
+
                         except Exception as e:
                             print(f"Error extracting image: {e}")
                             lines_with_placeholders.append("<image could not be extracted>")
                     else:
                         lines_with_placeholders.append("<image could not be extracted>")
+                
                 # Handle images as bytes (rare case)
                 elif isinstance(image_obj, bytes):
                     try:
                         img_filename = f"page_{page_index + 1}_img_{image_count}.jpg"
                         file_path_in_bucket = f"{pdf_base_name}/{img_filename}"
-                        import io
-                        file_like = io.BytesIO(image_obj)
-                       res = supabase.storage.from_(BUCKET_NAME).upload(
-                       file_path_in_bucket, image_obj, {"content-type": "image/jpeg", "upsert": True}
+                        
+                        # Correctly pass image_obj directly to the upload function
+                        res = supabase.storage.from_(BUCKET_NAME).upload(
+                            file_path_in_bucket, image_obj, {"content-type": "image/jpeg", "upsert": True}
                         )
+                        
                         if res.get("error"):
                             raise Exception(res["error"]["message"])
                         public_url = supabase.storage.from_(BUCKET_NAME).get_public_url(file_path_in_bucket)
@@ -115,6 +118,7 @@ def parse_pdf_and_extract_images(
                             public_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{file_path_in_bucket}"
                         lines_with_placeholders.append(public_url)
                         extracted_images.append(public_url)
+
                     except Exception as e:
                         print(f"Error saving image: {e}")
                         lines_with_placeholders.append("<image could not be extracted>")
@@ -141,4 +145,3 @@ def parse_pdf_and_extract_images(
                 txt_file.write(line + "\n")
 
     return output_txt_path, cleaned_lines, extracted_images
-
