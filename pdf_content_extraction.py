@@ -54,6 +54,7 @@ def parse_pdf_and_extract_images(
     lines_with_placeholders = []
     extracted_images = []
     pdf_base_name = os.path.splitext(os.path.basename(pdf_path))[0]
+    pdf_base_name = pdf_base_name.replace(" ", "_") # Add this line
 
     for page_index in range(1, len(doc)):  # Skip first and last pages
         page = doc[page_index]
