@@ -1,82 +1,64 @@
 import json
 import re
 import os
-from typing import Dict, List, Union, Pattern, Match, Optional, Tuple
-   
+import logging
+from typing import Dict, List, Pattern, Match, Optional, Tuple, Any
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
+
 
 class TopicProcessor:
-    def __init__(self):
-        # Initialize regex patterns
-        self.topic_pattern = re.compile(r"Topic (\d+)\s*,\s*(.+?)\n(.+?)(?=(Topic \d+\s*,|Case Study: \d+|$))", re.DOTALL)
-        self.case_study_pattern = re.compile(r"Case Study: (\d+)\n(.+?)\n(.+?)(?=(Topic \d+\s*,|Case Study: \d+|$))", re.DOTALL)
-        # self.question_pattern = re.compile(r"Question:\s*(\d+)\n(.+?)(?=(Question:\s*\d+|Topic \d+, |Case Study: \d+|$))", re.DOTALL)
-        self.question_pattern = re.compile(
-            r"(?:QUESTION|Question)[:\s]*(\d+)\n(.+?)(?=(?:QUESTION|Question)[:\s]*\d+|Topic \d+, |Case Study: \d+|$)", 
+    # Configurable option letters
+    OPTION_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+
+    def __init__(self) -> None:
+        """
+        Initialize regex patterns for topics, case studies, questions, answers, and explanations.
+        Patterns are robust to separators, spacing, and case.
+        """
+        self.topic_pattern = re.compile(
+            r"Topic\s*[:\-,]?\s*(\d+)(?:\s*[,:\-]\s*([^\n]+?))?\n(.+?)(?=(Topic\s*[:\-,]?\s*\d+|Case Study[:\s-]*\d+|$))",
             re.DOTALL | re.IGNORECASE
         )
-        # self.answer_pattern = re.compile(r"Answer:\s*([A-G,\s]+)(?=\n|$)")
-        self.answer_pattern = re.compile(
-            r"(?:Correct Answer|Answer)[:\s]*([A-G,\s]+)(?=\n|$)", 
+
+        self.case_study_pattern: Pattern = re.compile(
+            r"Case Study[:\s-]*(\d+)\n(.+?)\n(.+?)(?=(Topic\s+\d+[\s,:-]|Case Study[:\s-]*\d+|$))",
+            re.DOTALL | re.IGNORECASE
+        )
+        self.question_pattern: Pattern = re.compile(
+            r"(?:QUESTION|Question)[:\s]*(\d+)\n(.+?)(?=(?:QUESTION|Question)[:\s]*\d+|Topic\s+\d+[\s,:-]|Case Study[:\s-]*\d+|$)",
+            re.DOTALL | re.IGNORECASE
+        )
+        # Not used in improved extraction but kept for reference:
+        self.answer_pattern: Pattern = re.compile(
+            r"(?:Correct Answer|Answer)[:\s]*([A-G][\.\-:\)\s]*)?(.*)",
             re.IGNORECASE
         )
-        self.explanation_pattern = re.compile(r"Explanation:\s*(.+?)(?=(?:Question: \d+|Topic \d+, |Case Study: \d+|$))", re.DOTALL)
+        self.explanation_pattern: Pattern = re.compile(
+            r"Explanation[\s:-]*\s*(.+?)(?=(?:Question[:\s]*\d+|Topic\s+\d+[\s,:-]|Case Study[:\s-]*\d+|$))",
+            re.DOTALL | re.IGNORECASE
+        )
+        self.note_pattern = re.compile(r"^\s*not(e)?[\.:]?\s*$", re.IGNORECASE)
 
-    # def process_text(self, text: str) -> Dict:
-    #     """
-    #     Process text content and return structured data.
-        
-    #     Args:
-    #         text: The text content to process
-            
-    #     Returns:
-    #         Dictionary containing processed topic data
-    #     """
-    #     all_topics_data = {}
-    #     topics_found = self.extract_topics(text)
-    #     if not topics_found:
-    #         # Process as a single default topic
-    #         case_study_text = self.extract_case_study_text(text)
-    #         questions = self.extract_questions(text)
-    #         all_topics_data["topic0"] = {
-    #             "topic_name": "",
-    #             "case_study": case_study_text,
-    #             "questions": questions
-    #         }
-    #     else:
-    #         for i, match in enumerate(topics_found):
-    #             topic_data = self.process_topic_match(match)
-    #             all_topics_data[f"topic{topic_data['number']}"] = topic_data['data']
-
-    #     # json_string = json.dumps(all_topics_data, indent=4)
-    #     # with open('test_json.json', 'w') as f:
-    #     #     f.write(json_string)
-    #     return all_topics_data
-
-    def process_text(self, text: str) -> Dict:
-        """New version that handles questions before topics
-    
-          Process text content and return structured data.
-        
-          Args:
-              text: The text content to process
-            
-          Returns:
-              Dictionary containing processed topic data
+    def process_text(self, text: str) -> Dict[str, Any]:
         """
+        Process text content and return structured topic data.
+        """
+        all_topics_data: Dict[str, Any] = {}
 
-        all_topics_data = {}
-        
         # Get ALL questions first (with their positions)
-        all_questions = {
+        all_questions: Dict[int, Dict[str, Any]] = {
             q_match.start(): self.process_question_match(q_match)
             for q_match in self.question_pattern.finditer(text)
         }
-        
-        # Process topics (original logic but tracks positions)
-        topics_found = self.extract_topics(text)
-        
+
+        # Process topics and case studies
+        topics_found: List[Match] = self.extract_topics(text)
+
         if not topics_found:
-            # Original fallback if no topics found
             all_topics_data["topic0"] = {
                 "topic_name": "",
                 "case_study": self.extract_case_study_text(text),
@@ -88,24 +70,24 @@ class TopicProcessor:
                 topic_start = topic_match.start()
                 topic_data = self.process_topic_match(topic_match)
                 topic_num = topic_data["number"]
-                
+
                 # Assign questions between topics to previous topic (or topic0)
                 questions_in_gap = [
                     q for pos, q in all_questions.items()
                     if prev_topic_end <= pos < topic_start
                 ]
-                
+
                 if i == 0 and questions_in_gap:  # Questions before first topic
                     all_topics_data["topic0"] = {
                         "topic_name": "",
                         "case_study": "",
                         "questions": questions_in_gap
                     }
-                
+
                 # Add the topic itself
                 all_topics_data[f"topic{topic_num}"] = topic_data["data"]
                 prev_topic_end = topic_match.end()
-            
+
             # Handle questions after last topic
             remaining_questions = [
                 q for pos, q in all_questions.items()
@@ -118,21 +100,26 @@ class TopicProcessor:
                         "case_study": "",
                         "questions": []
                     }
-                all_topics_data["topic0"]["questions"].extend(remaining_questions)
-        
+                all_topics_data["topic0"]["questions"].extend(
+                    remaining_questions)
+
         return all_topics_data
 
     def extract_topics(self, text: str) -> List[Match]:
-        """Extract all topic matches from text."""
+        """
+        Extract all topic and case study matches from text.
+        """
         topic_matches = list(self.topic_pattern.finditer(text))
         case_study_matches = list(self.case_study_pattern.finditer(text))
         return topic_matches + case_study_matches
 
-    def process_topic_match(self, match: Match) -> Dict:
-        """Process a single topic match."""
+    def process_topic_match(self, match: Match) -> Dict[str, Any]:
+        """
+        Process a single topic or case study match.
+        """
         if match.re == self.topic_pattern:
             topic_number = match.group(1)
-            topic_name = match.group(2).strip()
+            topic_name = match.group(2).strip() if match.group(2) else ""
         else:
             topic_number = match.group(1)
             topic_name = f"Case Study {topic_number}"
@@ -150,170 +137,151 @@ class TopicProcessor:
         }
 
     def extract_case_study_text(self, text: str) -> str:
-        """Extract case study text from content."""
-
+        """
+        Extract case study text from content.
+        """
         case_study_match = re.search(
-            r"(?s)(Topic \d+\s*, |Case Study: \d+\n).+?\n(.+?)(?=Question: \d+)",
+            r"(?s)(Topic\s+\d+[\s,:-]|Case Study[:\s-]*\d+\n).+?\n(.+?)(?=Question[:\s]*\d+)",
             text,
-            re.DOTALL
+            re.DOTALL | re.IGNORECASE
         )
         if case_study_match:
             case_study_text = case_study_match.group(2).strip()
-            case_study_text = re.sub(r'Question: \d+.*', '', case_study_text, flags=re.DOTALL)
-
+            case_study_text = re.sub(
+                r'Question[:\s]*\d+.*', '', case_study_text, flags=re.DOTALL | re.IGNORECASE)
             return case_study_text if case_study_text and not case_study_text.isspace() else ""
         return ""
 
-    def extract_questions(self, text: str) -> List[Dict]:
-        """Extract questions from text content."""
-        questions = []
-       
+    def extract_questions(self, text: str) -> List[Dict[str, Any]]:
+        """
+        Extract questions from text content.
+        """
+        questions: List[Dict[str, Any]] = []
         for question_match in self.question_pattern.finditer(text):
             question_data = self.process_question_match(question_match)
             questions.append(question_data)
         return questions
 
-    def process_question_match(self, question_match: Match) -> Dict:
-        """Process a single question match and return structured data."""
+    def process_question_match(self, question_match: Match) -> Dict[str, Any]:
+        """
+        Process a single question match and return structured data.
+        """
         question_number = question_match.group(1)
-
         full_question_text = question_match.group(2).strip()
-        
-        # Split text at "Answer:" to separate options from answer/explanation
-        parts = re.split(r'Correct Answer|Answer:', full_question_text, 1)
-        question_with_options = parts[0].strip()
-        answer_explanation_text = "Answer:" + parts[1] if len(parts) > 1 else ""
 
-        # Extract answer
-        answer_match = self.answer_pattern.search(answer_explanation_text)
-        if answer_match and answer_match.group(1).strip():
-            answer_text = answer_match.group(1).strip()
-            answer_text = answer_text.replace(',', '')
-            
-            if ' ' in answer_text:
-                # Space-separated answers (like "A B C")
-                answer = [a.strip() for a in answer_text.split() if a.strip() in ['A', 'B', 'C', 'D', 'E', 'F', 'G']]
-            else:
-                # Concatenated answers (like "ABC")
-                answer = [letter for letter in answer_text if letter in ['A', 'B', 'C', 'D', 'E', 'F', 'G']]
-        else:
-            answer = []
-        
-        # Extract explanation
-        explanation_match = self.explanation_pattern.search(answer_explanation_text)
-        explanation = explanation_match.group(1).strip() if explanation_match else ""
-        
-        # Extract options
-        options = []
-        option_blocks = re.findall(
-            r'([A-G])\.\s+((?:(?!(?:[A-G]\. |\nAnswer:)).)+)',
-            question_with_options,
-            re.DOTALL
+        # Split text at any "Correct Answer"/"Answer", accepting optional colon/space/newline
+        parts = re.split(
+            r'(?:Correct Answer|Answer)\s*[:：]?\s*', full_question_text, 1, flags=re.IGNORECASE
         )
-        
-        for option_letter, option_content in option_blocks:
-            options.append(f"{option_letter}. {option_content.strip()}")
-        
-        # Clean question text
-        question_text = question_with_options
-        for option_letter, option_content in option_blocks:
-            option_text = f"{option_letter}. {option_content}"
-            question_text = question_text.replace(option_text, "").strip()
-        
-        question_text = self.clean_question_text(question_text)
-        rest_options, final_options = self.split_options(options)
-        if rest_options and final_options:
-            question_text = self.add_rest_to_question(question_text, rest_options)
+        question_with_options = parts[0].strip()
+        answer_explanation_text = parts[1] if len(parts) > 1 else ""
 
-            return {
-                "question_number": question_number,
-                "question": question_text,
-                "options": final_options,
-                "answer": answer,
-                "explanation": explanation
-            }
-        return {
-                "question_number": question_number,
-                "question": question_text,
-                "options": rest_options,
-                "answer": answer,
-                "explanation": explanation
-            }
-
-    def clean_question_text(self, question_text: str) -> str:
-        """Clean the question text by removing option lines."""
-        # Remove option lines that look like "A.    C", "B.    B", etc.
-        cleaned_text = re.sub(r'\n[A-D]\.\s*[A-D]', '', question_text, flags=re.MULTILINE)
-        
-        # Additional cleanup to remove any remaining option-like lines
-        cleaned_text = re.sub(r'\n[A-D]\..*', '', cleaned_text, flags=re.MULTILINE)
-        
-        return cleaned_text.strip()
-
-    
-    def split_options(self, options: List[str]) -> Tuple[List[str], List[str]]:
-        """Split options into first and last occurrences."""
-        first_occurrence = {}
-        last_occurrence = {}
-
-        # First and Last Occurrence Tracking
-        for option in options:
-            key = option.split('.')[0].strip()
-            
-            # Store the first occurrence
-            if key not in first_occurrence:
-                first_occurrence[key] = option
-
-            # Always update the last occurrence
+        # --- Smart, context-aware option extraction block (improved) ---
+        question_lines = question_with_options.splitlines()
+        question_lines_clean = []
+        option_lines = []
+        temp_option_lines = []
+        for line in question_lines:
+            # Aggressive: match A.  A)  A:  A-  A )  A . etc.
+            if re.match(r"^[A-G][\.\)\:\-\s]+\s*", line):
+                temp_option_lines.append(line.strip())
+            elif line.strip().lower().startswith("explanation"):
+                # Stop collecting question if explanation starts (even if "Answer" is missing)
+                break
             else:
-                last_occurrence[key] = option
-        # breakpoint()
+                if temp_option_lines:
+                    if len(temp_option_lines) >= 2:
+                        option_lines = temp_option_lines
+                        temp_option_lines = []
+                    else:
+                        question_lines_clean.extend(temp_option_lines)
+                        temp_option_lines = []
+                question_lines_clean.append(line.strip())
+        # In case options are at the end
+        if temp_option_lines and len(temp_option_lines) >= 2:
+            option_lines = temp_option_lines
+        elif temp_option_lines:
+            question_lines_clean.extend(temp_option_lines)
 
-        # Maintain order of first seen keys
-        
-        sorted_f_keys = list(first_occurrence.keys())
-        sorted_l_keys = list(last_occurrence.keys())
-        first_list = [first_occurrence[key] for key in sorted_f_keys]
-        last_list = [last_occurrence[key] for key in sorted_l_keys]
+        # Remove empty lines from question_lines_clean
+        question_text = "\n".join(q for q in question_lines_clean if q)
+        options = option_lines
 
-        return first_list, last_list
+        # --- End smart option extraction block ---
 
-    def add_rest_to_question(self, question_text: str, rest_options: List[str]) -> str:
-        """Add rest options to the question text."""
-        if not rest_options:
-            return question_text
-        
-        rest_content = "\n".join(rest_options)
-        return f"{question_text}\n{rest_content}"
+        # Extract answer (robust to newline after label)
+        answer = []
+        if answer_explanation_text:
+            answer_lines = answer_explanation_text.strip().splitlines()
+            for line in answer_lines:
+                line = line.strip()
+                if not line or line.lower().startswith('explanation'):
+                    continue
+                # Remove trailing dots/commas etc.
+                answer_candidate = line.strip(" .:,;-")
+                option_letters = re.findall(r"[A-G]", answer_candidate)
+                if option_letters:
+                    answer = option_letters
+                else:
+                    answer = [answer_candidate]
+                break  # Only take the first valid line
+
+        # Extract explanation (must NOT be in question block)
+        explanation_match = self.explanation_pattern.search(
+            answer_explanation_text)
+        explanation = explanation_match.group(
+            1).strip() if explanation_match else ""
+
+        # Extra fallback: If explanation appears in question, but no answer, move it out
+        if not answer and question_text.lower().strip().endswith('explanation'):
+            explanation = question_text
+            question_text = ''
+
+        if explanation and not answer:
+            logging.warning(
+                f"Question {question_number} has explanation but no answer! Raw block: '{full_question_text}' Answer: '{answer_explanation_text}' explanation: '{explanation}'")
+
+        return {
+            "question_number": question_number,
+            "question": question_text,
+            "options": options,
+            "answer": answer,
+            "explanation": explanation
+        }
 
     @staticmethod
-    def save_to_json(data: Dict, output_dir: str, filename: str) -> str:
+    def save_to_json(data: Dict[str, Any], output_dir: str, filename: str) -> str:
         """
         Save data to JSON file and return the file path.
-        
-        Args:
-            data: Data to save
-            output_dir: Directory to save the file
-            filename: Name of the JSON file
-            
-        Returns:
-            Path to the saved JSON file
         """
         os.makedirs(output_dir, exist_ok=True)
         output_path = os.path.join(output_dir, filename)
-        with open(output_path, "w") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
+        try:
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+            logging.info(f"Saved output to {output_path}")
+        except Exception as e:
+            logging.error(f"Failed to save output: {e}", exc_info=True)
+            raise
         return output_path
 
-def process_content(text: str) -> Dict:
+
+def process_content(text: str) -> Dict[str, Any]:
     """
     Convenience function to process content without instantiating TopicProcessor.
-    
-    Args:
-        text: Text content to process
-        
-    Returns:
-        Processed topic data as dictionary
     """
     processor = TopicProcessor()
     return processor.process_text(text)
+
+# Example usage (uncomment for CLI use):
+# if __name__ == "__main__":
+#     logging.info("Running TopicProcessor as a script. Place your sample input in 'sample.txt'.")
+#     try:
+#         with open("sample.txt", "r", encoding="utf-8") as f:
+#             sample_text = f.read()
+#         processor = TopicProcessor()
+#         data = processor.process_text(sample_text)
+#         processor.save_to_json(data, ".", "output.json")
+#         logging.info("Parsing complete. Output saved to output.json.")
+#     except FileNotFoundError:
+#         logging.error("sample.txt not found. Please provide an input file for testing.")

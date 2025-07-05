@@ -2,28 +2,27 @@ def remove_duplicate_questions(json_data):
     """Remove duplicate questions from all topics in the JSON data.
     Handles dynamic topic keys (topic0, topic1, etc.) and maintains question uniqueness across all topics.
     """
+    if "topics" not in json_data:
+        raise ValueError("Input JSON must have a 'topics' key.")
+
     seen_questions = set()
-    # breakpoint()
-    # Iterate through all topics in the JSON data
+    # Local function for fast normalization
+    def normalize(s): return s.strip().lower()
+
     for topic_key, topic_data in json_data["topics"].items():
-        # breakpoint()
         cleaned_questions = []
-        
-        # Process each question in the current topic
         for question in topic_data["questions"]:
-            question_text = question["question"].strip().lower()  # Normalize for comparison
-            
-            if question_text not in seen_questions:
-                seen_questions.add(question_text)
+            q_text_norm = normalize(question["question"])
+            if q_text_norm not in seen_questions:
+                seen_questions.add(q_text_norm)
                 cleaned_questions.append(question)
             else:
                 print(f"Removing duplicate question from {topic_key}: "
-                      f"Q{question['question_number']} - {question['question'][:50]}...")
-        
-        # Update the current topic with cleaned questions
+                      f"Q{question.get('question_number', '')} - {question['question'][:50]}...")
         topic_data["questions"] = cleaned_questions
-    
+
     return json_data
+
 
 # # Load your JSON file
 # with open('/Users/dev/Documents/pdf_parser_final/response.json', 'r') as f:
